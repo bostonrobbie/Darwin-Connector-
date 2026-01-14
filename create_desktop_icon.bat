@@ -1,14 +1,18 @@
 @echo off
 set "SCRIPT_PATH=%~dp0launch_everything.bat"
-set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-set "SHORTCUT_PATH=%STARTUP_FOLDER%\TV_IBKR_Master.lnk"
+set "ICON_PATH=%~dp0src\icon.ico" 
+:: Fallback to no icon if missing
+set "DESKTOP=%USERPROFILE%\Desktop"
+set "SHORTCUT_PATH=%DESKTOP%\Start IBKR Bridge.lnk"
 
-echo Setting up Auto-Start for: %SCRIPT_PATH%
+echo Creating Desktop Shortcut...
+echo Target: %SCRIPT_PATH%
+echo Desktop: %DESKTOP%
 
 powershell "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT_PATH%');$s.TargetPath='%SCRIPT_PATH%';$s.Save()"
 
 echo.
 echo ========================================================
-echo SUCCESS! TWS, Bridge, and Tunnel will start on Login.
+echo SUCCESS! Look for "Start IBKR Bridge" on your Desktop.
 echo ========================================================
 pause

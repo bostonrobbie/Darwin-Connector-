@@ -9,7 +9,10 @@ This bridge connects TradingView to **Trader Workstation (TWS)** or **IB Gateway
     *   Go to **API** -> **Settings**.
     *   **Check**: "Enable ActiveX and Socket Clients".
     *   **Uncheck**: "Read-Only API".
-    *   **Port**: Make sure it matches `src/config/settings.json` (Default: **7497** for Paper, **7496** for Live).
+    *   **Port**: 
+        *   **7497** = Paper Trading (Demo)
+        *   **7496** = Live Trading (Real Money)
+    *   **NOTE**: You must update `src/config/settings.json` if you switch!
 
 ## 2. Installation
 Run inside this folder:

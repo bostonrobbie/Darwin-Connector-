@@ -67,8 +67,27 @@ async def execute_trade_async(data):
              return {"status": "error", "message": "Could not connect to IBKR"}
 
     action = data.get('action', TRADING_CONFIG.get('default_action', 'BUY')).upper()
-    symbol = data.get('symbol', TRADING_CONFIG.get('default_symbol', 'EURUSD')).upper()
-    quantity = float(data.get('volume', TRADING_CONFIG.get('default_quantity', 10000))) # IB uses 'quantity' (shares/contracts), TV sends 'volume' (lots usually) - User must configure logic
+    
+    # --- Symbol Mapping (Match MT5 Logic) ---
+    raw_symbol = data.get('symbol', TRADING_CONFIG.get('default_symbol', 'EURUSD')).upper()
+    symbol_map = TRADING_CONFIG.get('symbol_map', {})
+    symbol = raw_symbol
+    
+    if raw_symbol in symbol_map:
+        mapping = symbol_map[raw_symbol]
+        if isinstance(mapping, str):
+            symbol = mapping
+        elif isinstance(mapping, dict):
+            symbol = mapping.get("name", raw_symbol)
+            # Future: Handle multiplier if needed, though IBKR uses 'quantity' directly
+            
+    logger.info(f"Processing: {action} {symbol} (Origin: {raw_symbol})")
+    
+    # --- CLOSE LOGIC ---
+    if action == 'CLOSE':
+        return await close_positions_async(symbol)
+
+    quantity = float(data.get('volume', TRADING_CONFIG.get('default_quantity', 10000))) 
     
     # Contract Construction
     sec_type = data.get('secType', TRADING_CONFIG.get('default_sec_type', 'CASH'))
@@ -77,31 +96,97 @@ async def execute_trade_async(data):
 
     contract = get_contract(symbol, sec_type, currency, exchange)
     
-    # Order Construction
-    # Using Market order for simplicity in this bridge V1
-    order = MarketOrder(action, quantity)
+    # --- ORDER LOGIC ---
+    sl = float(data.get('sl', 0.0))
+    tp = float(data.get('tp', 0.0))
     
-    # Optional: Attach Stop Loss / Take Profit
-    # IBKR "Bracket Orders" are complex, for V1 we just place the main order.
-    # Future enhancement: Bracket orders.
+    orders_to_place = []
     
-    logger.info(f"Placing Order: {action} {quantity} {symbol}")
+    # Base Order
+    parent = MarketOrder(action, quantity)
+    # Important: If just market, transmit=True. If bracket, transmit=False (wait for children).
+    if sl > 0 or tp > 0:
+        parent.orderId = ib.client.getReqId()
+        parent.transmit = False
+        orders_to_place.append(parent)
+        
+        reverse_action = 'SELL' if action == 'BUY' else 'BUY'
+        
+        # Stop Loss
+        if sl > 0:
+            stop_order = StopOrder(reverse_action, quantity, sl)
+            stop_order.parentId = parent.orderId
+            stop_order.transmit = (tp == 0) # Transmit if no TP to confirm
+            orders_to_place.append(stop_order)
+            
+        # Take Profit
+        if tp > 0:
+            tp_order = LimitOrder(reverse_action, quantity, tp)
+            tp_order.parentId = parent.orderId
+            tp_order.transmit = True # Last one triggers all
+            orders_to_place.append(tp_order)
+    else:
+        # Simple Market Order
+        orders_to_place.append(parent)
+
+    logger.info(f"Placing {len(orders_to_place)} Orders for {symbol}")
     
     try:
-        trade = ib.placeOrder(contract, order)
+        final_trade = None
+        for o in orders_to_place:
+            final_trade = ib.placeOrder(contract, o)
+        
         # We don't wait for fill in this webhook response to keep it fast, 
         # but we wait for it to be 'submitted' to TWS.
         await asyncio.sleep(0.5) 
         
         return {
             "status": "success",
-            "message": "Order Submitted",
-            "order_id": trade.order.orderId,
-            "status_ib": trade.orderStatus.status
+            "message": "Orders Submitted",
+            "order_id": final_trade.order.orderId if final_trade else 0,
+            "status_ib": final_trade.orderStatus.status if final_trade else "Unknown"
         }
     except Exception as e:
         logger.error(f"Order placement error: {e}")
         return {"status": "error", "message": str(e)}
+
+async def close_positions_async(symbol):
+    """Closes all open positions for a symbol."""
+    if not ib.isConnected():
+         await connect_ib()
+         
+    # Update positions
+    await ib.reqPositionsAsync()
+    
+    positions = ib.positions()
+    count = 0
+    results = []
+    
+    for pos in positions:
+        # Filter by symbol heuristic
+        # IBKR pos.contract.symbol is usually just 'EUR' for 'EURUSD' sometimes? 
+        # Actually it's usually 'EUR' and localSymbol 'EUR.USD' etc.
+        # Strict match on contract definition might be safer
+        
+        # Matches if symbol explicitly in contract symbol or local symbol
+        s_upper = symbol.upper()
+        p_symbol = pos.contract.symbol.upper()
+        p_local = pos.contract.localSymbol.upper()
+        
+        if s_upper in p_symbol or s_upper in p_local:
+            if pos.position == 0: continue
+            
+            action = 'SELL' if pos.position > 0 else 'BUY'
+            qty = abs(pos.position)
+            
+            logger.info(f"Closing {p_local}: {action} {qty}")
+            
+            order = MarketOrder(action, qty)
+            trade = ib.placeOrder(pos.contract, order)
+            results.append(f"Closed {qty} of {p_local}")
+            count += 1
+            
+    return {"status": "success", "message": f"Closed {count} positions", "details": results}
 
 def execute_trade_sync_wrapper(data):
     """Wrapper to call async function from sync Flask context."""

@@ -1,0 +1,22 @@
+=========================================
+      IBKR BRIDGE STARTUP CHECKLIST
+=========================================
+
+1. TWS Login
+   [ ] Type your User/Password in the login window.
+   [ ] Click "Login".
+
+2. Enable API (One Time Only)
+   [ ] Go to File -> Global Configuration.
+   [ ] Go to API -> Settings.
+   [ ] CHECK "Enable ActiveX and Socket Clients".
+   [ ] UNCHECK "Read-Only API".
+   [ ] Port must be: 7497 (Paper) or 7496 (Live).
+
+3. Disable Auto-Logoff (Optional)
+   [ ] Go to Configuration -> Lock and Exit.
+   [ ] Set "Auto Logoff" to specific time (e.g. Saturday).
+
+=========================================
+  Once you login, this window can be closed.
+=========================================
