@@ -4,14 +4,35 @@ import os
 import sys
 import threading
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 # --- CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, 'settings.json')
+LOG_PATH = os.path.join(BASE_DIR, 'bridge.log')
+
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_PATH),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+# --- GLOBAL STATE ---
+BRIDGE_STATE = {
+    "mt5_connected": False,
+    "last_trade": "None",
+    "uptime_start": None
+}
+import datetime
+BRIDGE_STATE["uptime_start"] = str(datetime.datetime.now())
 
 def load_config():
     if not os.path.exists(CONFIG_PATH):
-        print(f"[CRITICAL] settings.json not found at {CONFIG_PATH}")
+        logging.critical(f"settings.json not found at {CONFIG_PATH}")
         sys.exit(1)
     with open(CONFIG_PATH, 'r') as f:
         return json.load(f)
@@ -25,22 +46,22 @@ def initialize_mt5():
     password = CONFIG['mt5']['password']
     server = CONFIG['mt5']['server']
 
-    print(f"[INFO] Connecting to {server} as {login}...")
+    logging.info(f"Connecting to {server} as {login}...")
     
-    # Attempt 1: Attach
     if not mt5.initialize():
-        print(f"[WARN] Failed to attach: {mt5.last_error()}. Trying explicit path...")
+        logging.warning(f"Failed to attach: {mt5.last_error()}. Trying explicit path...")
         # Attempt 2: Launch
         if not mt5.initialize(path=path):
-            print(f"[ERROR] Failed to launch MT5: {mt5.last_error()}")
+            logging.error(f"Failed to launch MT5: {mt5.last_error()}")
             return False
             
     # Login Check
     if not mt5.login(login=login, password=password, server=server):
-        print(f"[ERROR] Login failed: {mt5.last_error()}")
+        logging.error(f"Login failed: {mt5.last_error()}")
         return False
         
-    print("[SUCCESS] MT5 Connected & Logged In.")
+    logging.info("MT5 Connected & Logged In.")
+    BRIDGE_STATE["mt5_connected"] = True
     return True
 
 # --- TRADING LOGIC ---
@@ -94,7 +115,7 @@ def execute_trade(data):
         else:
             symbol_out = map_conf
             
-    print(f"[INFO] Trade Request: {symbol_in} -> {symbol_out} (x{multiplier})")
+    logging.info(f"Trade Request: {symbol_in} -> {symbol_out} (x{multiplier})")
     
     # 2. Check Action
     action = data.get('action', '').upper()
@@ -155,9 +176,19 @@ def execute_trade(data):
         return {"status": "error", "message": f"MT5 Error: {result.comment} ({result.retcode})"}
         
     return {"status": "success", "order": result.order, "volume": result.volume}
+    
+def read_logs(lines=10):
+    if not os.path.exists(LOG_PATH):
+        return ["Log file not found."]
+    try:
+        with open(LOG_PATH, 'r') as f:
+            return f.readlines()[-lines:]
+    except:
+        return ["Error reading logs."]
 
 # --- WEB SEVER ---
 app = Flask(__name__)
+CORS(app)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -167,16 +198,29 @@ def webhook():
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
         
     res = execute_trade(data)
-    print(f"[RESULT] {res}")
+    BRIDGE_STATE["last_trade"] = f"{data.get('action')} {data.get('symbol')} @ {datetime.datetime.now().strftime('%H:%M:%S')}"
+    logging.info(f"RESULT: {res}")
     return jsonify(res)
+
+@app.route('/status', methods=['GET'])
+def status():
+    # Ping MT5 to be sure
+    connected = mt5.terminal_info() is not None
+    BRIDGE_STATE["mt5_connected"] = connected
+    
+    return jsonify({
+        "state": BRIDGE_STATE,
+        "logs": read_logs(15)
+    })
 
 if __name__ == "__main__":
     print("===================================")
     print("   NEW CLEAN BRIDGE STARTED        ")
     print("===================================")
+    logging.info("BRIDGE STARTED")
     
     if not initialize_mt5():
-        print("[WARN] Running in Offline/Debug mode (MT5 not connected)")
+        logging.warning("Running in Offline/Debug mode (MT5 not connected)")
     
     # Start Flask
     app.run(host=CONFIG['server']['host'], port=CONFIG['server']['port'])
