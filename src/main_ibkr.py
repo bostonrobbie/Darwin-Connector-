@@ -40,7 +40,7 @@ def main():
     # [REMOVED] Background Thread to prevent EVENT LOOP conflicts.
     # The 'ib_executor' now handles connection checks lazily before every trade.
     
-    logger.info("Starting Webhook Listener (Sync)...")
+    logging.info("Starting Webhook Listener (Sync)...")
 
     try:
         webhook_listener.start_server()

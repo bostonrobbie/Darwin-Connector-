@@ -31,17 +31,18 @@ def restart_tunnel(name):
     except:
         pass
         
-    # 2. Start new process (detached)
-    # We re-run the specific command based on the name
+    # 2. Start new process (background, no new window)
     cmd = ""
     if name == "IBKR":
-        cmd = 'start "IBKR Tunnel" cmd /k "lt --port 5001 --subdomain bostonrobbie-ibkr"'
+        cmd = 'lt --port 5001 --subdomain bostonrobbie-ibkr'
     elif name == "MT5":
-        cmd = 'start "MT5 Tunnel" cmd /k "lt --port 5000 --subdomain major-cups-pick"'
+        cmd = 'lt --port 5000 --subdomain major-cups-pick'
         
     if cmd:
-        subprocess.Popen(cmd, shell=True)
-        log(f"RESTART COMMAND SENT FOR {name}", Fore.GREEN)
+        # Use shell=True to find 'lt' in path (it's a node script/batch file)
+        # Redirect output to DEVNULL to keep console clean (or we could log it)
+        subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log(f"RESTART COMMAND SENT FOR {name} (Background)", Fore.GREEN)
         time.sleep(5) # Wait for it to spin up
 
 def check_status():
