@@ -122,7 +122,9 @@ def execute_trade(data):
     
     # 2. Check Action
     action = data.get('action', '').upper()
-    if action == 'CLOSE':
+    
+    # 2a. Handle Exits/Flattening
+    if action in ['CLOSE', 'EXIT', 'FLATTEN']:
         return close_positions(symbol_out)
         
     # 3. Volume Calculation
@@ -151,18 +153,34 @@ def execute_trade(data):
     tick = mt5.symbol_info_tick(symbol_out)
     if not tick:
          return {"status": "error", "message": f"No price data (tick) for {symbol_out}"}
-         
-    if action == 'BUY':
-        order_type = mt5.ORDER_TYPE_BUY
-        price = tick.ask
-    elif action == 'SELL':
-        order_type = mt5.ORDER_TYPE_SELL
-        price = tick.bid
+
+    # Order Type & Price Logic
+    order_type_str = data.get('type', 'MARKET').upper()
+    limit_price = float(data.get('price', 0.0))
+    
+    if order_type_str == 'LIMIT' and limit_price > 0:
+        action_type = mt5.TRADE_ACTION_PENDING
+        price = limit_price
+        if action == 'BUY':
+            order_type = mt5.ORDER_TYPE_BUY_LIMIT
+        elif action == 'SELL':
+            order_type = mt5.ORDER_TYPE_SELL_LIMIT
+        else:
+             return {"status": "error", "message": f"Unknown action: {action}"}
     else:
-        return {"status": "error", "message": f"Unknown action: {action}"}
+        # Market Execution (Default)
+        action_type = mt5.TRADE_ACTION_DEAL
+        if action == 'BUY':
+            order_type = mt5.ORDER_TYPE_BUY
+            price = tick.ask
+        elif action == 'SELL':
+            order_type = mt5.ORDER_TYPE_SELL
+            price = tick.bid
+        else:
+            return {"status": "error", "message": f"Unknown action: {action}"}
         
     req = {
-        "action": mt5.TRADE_ACTION_DEAL,
+        "action": action_type,
         "symbol": symbol_out,
         "volume": final_vol,
         "type": order_type,
@@ -171,7 +189,7 @@ def execute_trade(data):
         "magic": CONFIG['trading']['magic_number'],
         "comment": "Antigravity-Bridge",
         "type_time": mt5.ORDER_TIME_GTC, # Good till cancelled
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": mt5.ORDER_FILLING_IOC if action_type == mt5.TRADE_ACTION_DEAL else mt5.ORDER_FILLING_RETURN,
     }
     
     result = mt5.order_send(req)
@@ -196,6 +214,8 @@ CORS(app)
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
+    logging.info(f"Received Payload: {json.dumps(data)}")
+    
     # Security check (basic)
     if data.get('secret') != CONFIG['security']['webhook_secret']:
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
