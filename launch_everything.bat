@@ -47,9 +47,8 @@ if defined TWS_PATH (
 echo [2/6] Starting Bridge Server...
 start "IBKR Bridge" cmd /k "python "%~dp0src\main_ibkr.py""
 
-:: 3. Start Tunnel
-echo [3/6] Starting IBKR Tunnel...
-start "IBKR Tunnel" cmd /k "lt --port 5001 --subdomain bostonrobbie-ibkr"
+:: 3. IBKR Tunnel managed by Connection Guard
+echo [3/6] (Tunnel managed by Guard)
 
 :: 4. Start IBKR Dashboard
 echo [4/6] Starting IBKR Monitor Dashboard...
@@ -60,9 +59,8 @@ echo [5/6] Starting MT5 Bridge...
 cd /d "%~dp0..\TradingView_MT5_Bridge"
 start "MT5 Bridge" cmd /k "python bridge.py"
 
-:: 6. Start MT5 Tunnel & Dashboard
-echo [6/6] Starting MT5 Tunnel & Dashboard...
-start "MT5 Tunnel" cmd /k "lt --port 5000 --subdomain major-cups-pick"
+:: 6. MT5 Tunnel managed by Connection Guard
+echo [6/6] (Tunnel managed by Guard)
 start "" "dashboard.html"
 
 :: 7. Start Connection Guard

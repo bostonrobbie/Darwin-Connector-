@@ -18,39 +18,65 @@ def log(msg, color=Fore.WHITE):
     print(f"{Fore.CYAN}[{timestamp}]{color} {msg}{Style.RESET_ALL}")
 
 import subprocess
+import atexit
 
-def restart_tunnel(name):
-    """Kills and restarts the tunnel process."""
-    log(f"ATTEMPTING RESTART FOR {name}...", Fore.YELLOW)
-    
-    # 1. Kill old process
-    try:
-        # We kill node.exe explicitly as it runs localtunnel
-        subprocess.run("taskkill /F /IM node.exe /T", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(2)
-    except:
-        pass
-        
-    # 2. Start new process (background, no new window)
+# Process Store
+PROCESSES = {}
+
+def start_tunnel(name):
+    """Starts a tunnel and stores the process handle."""
     cmd = ""
     if name == "IBKR":
         cmd = 'lt --port 5001 --subdomain bostonrobbie-ibkr'
     elif name == "MT5":
         cmd = 'lt --port 5000 --subdomain major-cups-pick'
-        
+    
     if cmd:
-        # Use shell=True to find 'lt' in path (it's a node script/batch file)
-        # Redirect output to DEVNULL to keep console clean (or we could log it)
-        subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        log(f"RESTART COMMAND SENT FOR {name} (Background)", Fore.GREEN)
+        log(f"STARTING TUNNEL: {name}", Fore.YELLOW)
+        # Start new process
+        proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        PROCESSES[name] = proc
+        log(f"STARTED {name} (PID: {proc.pid})", Fore.GREEN)
         time.sleep(5) # Wait for it to spin up
+
+def restart_tunnel(name):
+    """Surgically restarts only the specific tunnel process."""
+    log(f"ATTEMPTING RESTART FOR {name}...", Fore.YELLOW)
+    
+    # 1. Kill specific process if it exists
+    if name in PROCESSES:
+        proc = PROCESSES[name]
+        try:
+            log(f"KILLING OLD PID: {proc.pid}", Fore.MAGENTA)
+            # Terminate the specific process object
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill() # Force kill if stubborn
+        except Exception as e:
+            log(f"Error killing {name}: {e}", Fore.RED)
+        
+        del PROCESSES[name]
+    else:
+        # Fallback: existing taskkill if we didn't start it (cleanup old mess)
+        # But try to be specific if possible. For now, rely on internal tracking.
+        pass
+
+    # 2. Start new
+    start_tunnel(name)
 
 def check_status():
     all_good = True
     print("-" * 50)
     for name, url in URLS.items():
+        # Ensure it's running first
+        if name not in PROCESSES:
+             log(f"{name}: NOT RUNNING - STARTING...", Fore.YELLOW)
+             start_tunnel(name)
+             
         try:
-            # Short timeout because if it hangs, it's bad
+            # Short timeout
             resp = requests.get(url, timeout=5, headers={"Bypass-Tunnel-Reminder": "true"})
             if resp.status_code == 200:
                 log(f"{name}: ONLINE ({url})", Fore.GREEN)
@@ -69,9 +95,21 @@ def check_status():
         print("!"*50 + "\n")
         sys.stdout.flush()
 
+def cleanup():
+    """Kill all managed processes on exit."""
+    for name, proc in PROCESSES.items():
+        try:
+            proc.terminate()
+        except:
+            pass
+
 def main():
-    print(f"{Fore.YELLOW}=== CONNECTION GUARD ACTIVE ==={Style.RESET_ALL}")
-    print("Monitoring public tunnel URLs every 30 seconds...")
+    atexit.register(cleanup)
+    print(f"{Fore.YELLOW}=== CONNECTION MANAGER ACTIVE ==={Style.RESET_ALL}")
+    print("Taking control of tunnel processes...")
+    
+    # Initial cleanup of any rogue node processes from before
+    subprocess.run("taskkill /F /IM node.exe /T", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     while True:
         check_status()
