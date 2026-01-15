@@ -2,9 +2,23 @@ import sys
 import os
 import signal
 import asyncio
+import logging
 
 # Ensure src in path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# --- LOGGING SETUP ---
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOG_PATH = os.path.join(BASE_DIR, "bridge.log")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_PATH),
+        logging.StreamHandler()
+    ]
+)
 
 import ib_executor
 import webhook_listener

@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 
 # Setup Logger
-logging.basicConfig(level=logging.INFO)
+# Logger setup moved to main entry point
 logger = logging.getLogger("IB_Executor")
 
 ib = IB()

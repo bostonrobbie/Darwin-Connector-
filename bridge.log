@@ -1,0 +1,83 @@
+2026-01-15 09:45:06,774 [INFO] Starting IBKR Bridge Server on 0.0.0.0:5001
+2026-01-15 09:45:06,775 [INFO] Connecting to IBKR 127.0.0.1:7497 ClientID:1...
+2026-01-15 09:45:06,775 [INFO] Connecting to 127.0.0.1:7497 with clientId 1...
+2026-01-15 09:45:06,776 [INFO] Connected
+2026-01-15 09:45:06,779 [INFO] Logged on to server version 178
+2026-01-15 09:45:06,781 [ERROR] Error 326, reqId -1: Unable to connect as the client id is already in use. Retry with a unique client id.
+2026-01-15 09:45:06,810 [WARNING]  * Debugger is active!
+2026-01-15 09:45:06,814 [INFO]  * Debugger PIN: 852-175-487
+2026-01-15 09:45:07,281 [ERROR] Peer closed connection. clientId 1 already in use?
+2026-01-15 09:45:08,672 [INFO]  * Detected change in 'C:\\Users\\User\\Documents\\AI\\TradingView_IBKR_Bridge\\src\\webhook_listener.py', reloading
+2026-01-15 09:45:11,457 [INFO] Starting IBKR Bridge Server on 0.0.0.0:5001
+2026-01-15 09:45:11,459 [INFO] Connecting to IBKR 127.0.0.1:7497 ClientID:1...
+2026-01-15 09:45:11,459 [INFO] Connecting to 127.0.0.1:7497 with clientId 1...
+2026-01-15 09:45:11,459 [INFO] Connected
+2026-01-15 09:45:11,463 [INFO] Logged on to server version 178
+2026-01-15 09:45:11,464 [ERROR] Error 326, reqId -1: Unable to connect as the client id is already in use. Retry with a unique client id.
+2026-01-15 09:45:11,493 [WARNING]  * Debugger is active!
+2026-01-15 09:45:11,496 [INFO]  * Debugger PIN: 852-175-487
+2026-01-15 09:45:11,965 [ERROR] Peer closed connection. clientId 1 already in use?
+2026-01-15 09:45:15,473 [INFO] Disconnecting
+2026-01-15 09:45:15,473 [ERROR] API connection failed: TimeoutError()
+2026-01-15 09:45:15,473 [WARNING] Port 7497/ID 1 failed: 
+2026-01-15 09:45:15,473 [WARNING] Likely Client ID conflict. Retrying with new ID...
+2026-01-15 09:45:16,483 [INFO] Connecting to IBKR 127.0.0.1:7497 ClientID:4484...
+2026-01-15 09:45:16,484 [INFO] Connecting to 127.0.0.1:7497 with clientId 4484...
+2026-01-15 09:45:16,485 [INFO] Connected
+2026-01-15 09:45:16,487 [INFO] Logged on to server version 178
+2026-01-15 09:45:16,488 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:usfarm.nj
+2026-01-15 09:45:16,489 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:usopt.nj
+2026-01-15 09:45:16,489 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:cashfarm
+2026-01-15 09:45:16,489 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:usfarm
+2026-01-15 09:45:16,489 [INFO] Warning 2106, reqId -1: HMDS data farm connection is OK:ushmds
+2026-01-15 09:45:16,489 [INFO] Warning 2158, reqId -1: Sec-def data farm connection is OK:secdefnj
+2026-01-15 09:45:16,489 [INFO] API connection ready
+2026-01-15 09:45:16,595 [INFO] Synchronization complete
+2026-01-15 09:45:16,595 [INFO] Connected to Interactive Brokers on Port 7497 (ID: 4484)!
+2026-01-15 09:51:15,691 [INFO] Starting IBKR Bridge Server on 0.0.0.0:5001
+2026-01-15 09:51:15,692 [INFO] Connecting to IBKR 127.0.0.1:7497 ClientID:1...
+2026-01-15 09:51:15,692 [INFO] Connecting to 127.0.0.1:7497 with clientId 1...
+2026-01-15 09:51:15,693 [INFO] Connected
+2026-01-15 09:51:15,698 [INFO] Logged on to server version 178
+2026-01-15 09:51:15,699 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:usfarm.nj
+2026-01-15 09:51:15,699 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:usopt.nj
+2026-01-15 09:51:15,699 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:cashfarm
+2026-01-15 09:51:15,699 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:usfarm
+2026-01-15 09:51:15,699 [INFO] Warning 2106, reqId -1: HMDS data farm connection is OK:ushmds
+2026-01-15 09:51:15,699 [INFO] Warning 2158, reqId -1: Sec-def data farm connection is OK:secdefnj
+2026-01-15 09:51:15,700 [INFO] API connection ready
+2026-01-15 09:51:15,741 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.0.21:5001
+2026-01-15 09:51:15,741 [INFO] [33mPress CTRL+C to quit[0m
+2026-01-15 09:51:15,754 [INFO]  * Restarting with watchdog (windowsapi)
+2026-01-15 09:51:15,804 [INFO] Synchronization complete
+2026-01-15 09:51:15,804 [INFO] Connected to Interactive Brokers on Port 7497 (ID: 1)!
+2026-01-15 09:51:16,586 [INFO] Starting IBKR Bridge Server on 0.0.0.0:5001
+2026-01-15 09:51:16,587 [INFO] Connecting to IBKR 127.0.0.1:7497 ClientID:1...
+2026-01-15 09:51:16,588 [INFO] Connecting to 127.0.0.1:7497 with clientId 1...
+2026-01-15 09:51:16,588 [INFO] Connected
+2026-01-15 09:51:16,592 [INFO] Logged on to server version 178
+2026-01-15 09:51:16,593 [ERROR] Error 326, reqId -1: Unable to connect as the client id is already in use. Retry with a unique client id.
+2026-01-15 09:51:16,623 [WARNING]  * Debugger is active!
+2026-01-15 09:51:16,626 [INFO]  * Debugger PIN: 852-175-487
+2026-01-15 09:51:17,107 [ERROR] Peer closed connection. clientId 1 already in use?
+2026-01-15 09:51:20,594 [INFO] Disconnecting
+2026-01-15 09:51:20,594 [ERROR] API connection failed: TimeoutError()
+2026-01-15 09:51:20,594 [WARNING] Port 7497/ID 1 failed: 
+2026-01-15 09:51:20,595 [WARNING] Likely Client ID conflict. Retrying with new ID...
+2026-01-15 09:51:21,602 [INFO] Connecting to IBKR 127.0.0.1:7497 ClientID:6721...
+2026-01-15 09:51:21,603 [INFO] Connecting to 127.0.0.1:7497 with clientId 6721...
+2026-01-15 09:51:21,604 [INFO] Connected
+2026-01-15 09:51:21,606 [INFO] Logged on to server version 178
+2026-01-15 09:51:21,606 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:usfarm.nj
+2026-01-15 09:51:21,607 [INFO] API connection ready
+2026-01-15 09:51:21,607 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:usopt.nj
+2026-01-15 09:51:21,607 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:cashfarm
+2026-01-15 09:51:21,607 [INFO] Warning 2104, reqId -1: Market data farm connection is OK:usfarm
+2026-01-15 09:51:21,607 [INFO] Warning 2106, reqId -1: HMDS data farm connection is OK:ushmds
+2026-01-15 09:51:21,607 [INFO] Warning 2158, reqId -1: Sec-def data farm connection is OK:secdefnj
+2026-01-15 09:51:21,812 [INFO] Synchronization complete
+2026-01-15 09:51:21,813 [INFO] Connected to Interactive Brokers on Port 7497 (ID: 6721)!
+2026-01-15 09:51:33,648 [INFO] Disconnecting from 127.0.0.1:7497, 117 B sent in 8 messages, 18.8 kB received in 397 messages, session time 18.1 s.

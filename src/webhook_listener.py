@@ -10,14 +10,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_PATH = os.path.join(BASE_DIR, "bridge.log")
 
 # Setup logging (File + Console)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_PATH),
-        logging.StreamHandler()
-    ]
-)
+# Logging is configured in main_ibkr.py
 logger = logging.getLogger("Webhook")
 
 # --- GLOBAL STATE ---
