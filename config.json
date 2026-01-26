@@ -1,0 +1,95 @@
+{
+    "server": {
+        "host": "0.0.0.0",
+        "ibkr_port": 5001,
+        "mt5_port": 80
+    },
+    "security": {
+        "webhook_secret": "fd70ac19-6154-4354-a8ba-b345b511ed93",
+        "max_webhook_age_seconds": 30
+    },
+    "trading_hours": {
+        "hard_exit_enabled": true,
+        "hard_exit_time": "16:50",
+        "timezone": "America/New_York",
+        "trading_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "sunday_session_enabled": true,
+        "sunday_session_start": "18:00"
+    },
+    "broker_controls": {
+        "mt5_paused": false,
+        "ibkr_paused": false,
+        "topstep_paused": false
+    },
+    "tunnels": {
+        "ibkr_subdomain": "bostonrobbie-ibkr",
+        "mt5_subdomain": "major-cups-pick"
+    },
+    "ibkr": {
+        "tws_host": "127.0.0.1",
+        "tws_port": 7497,
+        "api_key": "",
+        "base_url": "https://localhost:5000/v1/api",
+        "client_id": 1,
+        "paper_mode": true,
+        "tws_path": "C:\\Jts\\1043\\tws.exe",
+        "username": "",
+        "password": "",
+        "tws_login_mode": "manual"
+    },
+    "topstep": {
+        "enabled": true,
+        "mock_mode": false,
+        "eval_mode": true,
+        "live_test_mode": true,
+        "username": "rgorham369@gmail.com",
+        "api_key": "9lqnj/C6Uv7trbAT01n0QpU1Q1TSYgCcKp7n/WUw2Cc=",
+        "base_url": "https://api.topstepx.com/api",
+        "account_id": 17247316,
+        "max_retries": 3,
+        "micros_per_mini": 5,
+        "max_micros": 15,
+        "symbol_map": {
+            "NQ": "MNQ",
+            "MNQ": "MNQ",
+            "ES": "MES",
+            "MES": "MES"
+        }
+    },
+    "mt5": {
+        "login": 4000082688,
+        "password": "@JILLson9",
+        "server": "Darwinex-Live",
+        "path": "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
+        "magic_number": 999888,
+        "auto_connect": true,
+        "execution": {
+            "default_type": "MARKET",
+            "slippage_offset_ticks": 2
+        },
+        "symbol_map": {
+            "ES1!": {
+                "name": "ES_H",
+                "multiplier": 1.0
+            },
+            "MES1!": {
+                "name": "MES_H",
+                "multiplier": 1.0
+            },
+            "NQ1!": {
+                "name": "NQ_H",
+                "multiplier": 1.0
+            },
+            "MNQ1!": {
+                "name": "NQ_H",
+                "multiplier": 1.0
+            },
+            "XAUUSD": "GC_G",
+            "BTCUSD": "BTCUSD"
+        }
+    },
+    "alerts": {
+        "enabled": false,
+        "discord_webhook": ""
+    }
+}

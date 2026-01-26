@@ -1,0 +1,12 @@
+flask
+flask-cors
+ib_insync
+MetaTrader5
+requests
+pandas
+streamlit
+watchdog
+colorama
+psutil
+waitress
+pytz
