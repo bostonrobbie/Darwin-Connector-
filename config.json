@@ -27,15 +27,39 @@
     },
     "ibkr": {
         "tws_host": "127.0.0.1",
-        "tws_port": 7497,
+        "tws_port": 4002,
         "api_key": "",
         "base_url": "https://localhost:5000/v1/api",
         "client_id": 1,
         "paper_mode": true,
-        "tws_path": "C:\\Jts\\1043\\tws.exe",
+        "gateway_path": "C:\\Jts\\ibgateway\\1037\\ibgateway.exe",
         "username": "",
         "password": "",
-        "tws_login_mode": "manual"
+        "tws_login_mode": "manual",
+        "position_sizing": {
+            "mode": "fixed",
+            "micros_per_mini": 1,
+            "max_micros": 3,
+            "equity_mode": {
+                "enabled": false,
+                "base_equity": 10000,
+                "risk_per_trade_pct": 1.0,
+                "max_position_pct": 5.0,
+                "scale_factor": 1.0
+            }
+        },
+        "symbol_map": {
+            "NQ": "MNQ",
+            "MNQ": "MNQ",
+            "NQ1!": "MNQ",
+            "MNQ1!": "MNQ",
+            "ES": "MES",
+            "MES": "MES",
+            "ES1!": "MES",
+            "MES1!": "MES"
+        },
+        "default_exchange": "CME",
+        "default_currency": "USD"
     },
     "topstep": {
         "enabled": true,

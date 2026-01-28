@@ -43,19 +43,36 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Header
-st.title("📊 Unified Bridge")
-st.caption("TradingView → MT5 + TopStep Trade Execution")
+st.title("📊 Unified Trading Bridge")
+st.caption("TradingView → IBKR + MT5 + TopStep")
 
-# Quick Status Bar
-col1, col2, col3, col4 = st.columns(4)
+# Quick Status Bar - Now with IBKR
+col1, col2, col3, col4, col5 = st.columns(5)
+
+# Check all broker statuses
 mt5_online, mt5_data = check_status(MT5_Url)
+ibkr_online, ibkr_data = check_status(IBKR_Url)
 
 # Get pause states from health endpoint
 mt5_paused = mt5_data.get("mt5_paused", False) if mt5_online else False
-ibkr_paused = mt5_data.get("ibkr_paused", False) if mt5_online else False
+ibkr_paused = CONFIG.get('broker_controls', {}).get('ibkr_paused', False)
 topstep_paused = mt5_data.get("topstep_paused", False) if mt5_online else False
 
 with col1:
+    # IBKR Status
+    if ibkr_online:
+        ibkr_status = ibkr_data.get("status", "unknown")
+        if ibkr_status == "connected":
+            if ibkr_paused:
+                st.warning("IBKR: PAUSED")
+            else:
+                st.success("IBKR: Connected")
+        else:
+            st.warning("IBKR: " + ibkr_status.title())
+    else:
+        st.error("IBKR: Offline")
+
+with col2:
     if mt5_online and mt5_data.get("status") == "connected":
         if mt5_paused:
             st.warning("MT5: PAUSED")
@@ -63,7 +80,7 @@ with col1:
             st.success("MT5: Connected")
     else:
         st.error("MT5: Offline")
-with col2:
+with col3:
     ts_status = mt5_data.get("topstep_status", "unknown") if mt5_online else "offline"
     if ts_status == "connected":
         if topstep_paused:
@@ -72,9 +89,10 @@ with col2:
             st.success("TopStep: Connected")
     else:
         st.warning("TopStep: " + ts_status.title())
-with col3:
-    st.metric("Last Trade", mt5_data.get("last_trade", "None")[:20] if mt5_data.get("last_trade") else "None")
 with col4:
+    last_trade = ibkr_data.get("last_trade", mt5_data.get("last_trade", "None"))
+    st.metric("Last Trade", last_trade[:20] if last_trade and last_trade != "None" else "None")
+with col5:
     if st.button("🚨 CLOSE ALL", type="primary"):
         try:
             requests.post(f"{MT5_Url}/close_all", json={
@@ -225,7 +243,44 @@ with tab_brokers:
 
     broker_config = load_config()
 
-    col_mt5, col_topstep = st.columns(2)
+    col_ibkr, col_mt5, col_topstep = st.columns(3)
+
+    # --- IBKR ---
+    with col_ibkr:
+        st.markdown("### Interactive Brokers")
+
+        ibkr_conf = broker_config.get('ibkr', {})
+
+        # Status indicator
+        if ibkr_online:
+            ibkr_status = ibkr_data.get("status", "unknown")
+            if ibkr_status == "connected":
+                mode = "Paper" if ibkr_conf.get('paper_mode', True) else "Live"
+                st.success(f"✓ Connected ({mode})")
+            else:
+                st.warning("⚠ Bridge running, not connected to TWS/Gateway")
+        else:
+            st.error("✗ Bridge Offline")
+
+        with st.expander("Connection Settings", expanded=False):
+            ibkr_host = st.text_input("TWS/Gateway Host", value=ibkr_conf.get('tws_host', '127.0.0.1'), key="ibkr_host")
+            ibkr_port = st.number_input("Port", value=ibkr_conf.get('tws_port', 4002), key="ibkr_port_conn")
+            st.caption("Paper: 4002 (Gateway) / 7497 (TWS)")
+            st.caption("Live: 4001 (Gateway) / 7496 (TWS)")
+
+            ibkr_paper = st.checkbox("Paper Trading Mode", value=ibkr_conf.get('paper_mode', True), key="ibkr_paper")
+
+            if st.button("💾 Save IBKR", key="save_ibkr", use_container_width=True):
+                broker_config['ibkr']['tws_host'] = ibkr_host
+                broker_config['ibkr']['tws_port'] = int(ibkr_port)
+                broker_config['ibkr']['paper_mode'] = ibkr_paper
+                save_config(broker_config)
+                st.success("Saved! Restart bridge to apply.")
+
+        # Position sizing display
+        sizing = ibkr_conf.get('position_sizing', {})
+        st.markdown(f"**Mode:** {sizing.get('mode', 'fixed').title()}")
+        st.caption(f"1 Mini = {sizing.get('micros_per_mini', 1)} Micro, Max {sizing.get('max_micros', 3)}")
 
     # --- MT5 ---
     with col_mt5:
@@ -302,9 +357,27 @@ with tab_brokers:
     st.divider()
 
     # IBKR Section (collapsed)
-    with st.expander("Interactive Brokers (Coming Soon)", expanded=False):
-        st.info("IBKR integration will be configured later.")
-        st.caption("Currently forwarding is disabled.")
+    # IBKR Position Sizing Settings
+    with st.expander("IBKR Position Sizing", expanded=False):
+        ibkr_sizing = broker_config.get('ibkr', {}).get('position_sizing', {})
+
+        sizing_mode = st.selectbox("Sizing Mode", ["fixed", "equity"],
+                                   index=0 if ibkr_sizing.get('mode', 'fixed') == 'fixed' else 1,
+                                   key="ibkr_sizing_mode")
+
+        micros_mini = st.number_input("Micros per Mini", min_value=1, max_value=10,
+                                      value=ibkr_sizing.get('micros_per_mini', 1), key="ibkr_micros")
+        max_micros = st.number_input("Max Contracts", min_value=1, max_value=20,
+                                     value=ibkr_sizing.get('max_micros', 3), key="ibkr_max")
+
+        st.caption(f"Example: 2 Minis = {min(2 * micros_mini, max_micros)} contracts")
+
+        if st.button("💾 Save IBKR Sizing", key="save_ibkr_sizing", use_container_width=True):
+            broker_config['ibkr']['position_sizing']['mode'] = sizing_mode
+            broker_config['ibkr']['position_sizing']['micros_per_mini'] = micros_mini
+            broker_config['ibkr']['position_sizing']['max_micros'] = max_micros
+            save_config(broker_config)
+            st.success("Saved! Restart bridge to apply.")
 
 
 # =====================
@@ -368,8 +441,11 @@ with tab_controls:
                     st.rerun()
 
     with control_col3:
-        st.markdown("### IBKR")
-        st.info("Status: Coming Soon")
+        st.markdown("### IBKR (Paper)")
+        if ibkr_online and ibkr_data.get("status") == "connected":
+            st.success("Status: Connected")
+        else:
+            st.error("Status: Disconnected")
 
         if ibkr_paused:
             st.error("🔴 PAUSED - Trades blocked")
@@ -614,7 +690,7 @@ with tab_settings:
 
 # Footer
 st.divider()
-st.caption("Unified Bridge v2.0 | MT5 + TopStep")
+st.caption("Unified Trading Bridge v3.0 | IBKR + MT5 + TopStep")
 
 # Auto-refresh every 5 seconds
 time.sleep(5)
