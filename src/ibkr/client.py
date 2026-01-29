@@ -28,6 +28,9 @@ class IBKRClient:
         self.symbol_map = config['ibkr'].get('symbol_map', {})
         self.default_exchange = config['ibkr'].get('default_exchange', 'CME')
         self.default_currency = config['ibkr'].get('default_currency', 'USD')
+
+        # Contract cache to avoid repeated resolution (symbol -> (contract, expiry))
+        self._contract_cache = {}
         
     async def connect(self):
         """Connects to TWS/Gateway."""
@@ -119,8 +122,21 @@ class IBKRClient:
         return None
 
     async def resolve_contract(self, symbol, sec_type, currency, exchange):
-        """Resolves contract, supporting Futures Front Month."""
+        """Resolves contract, supporting Futures Front Month with caching."""
         if sec_type == 'FUT':
+            # Check cache first
+            cache_key = f"{symbol}_{sec_type}_{exchange}"
+            if cache_key in self._contract_cache:
+                cached_contract, cached_expiry = self._contract_cache[cache_key]
+                today = datetime.now().strftime('%Y%m%d')
+                # Use cached contract if still valid (not expired)
+                if cached_expiry >= today:
+                    logger.info(f"Using cached contract for {symbol}: {cached_contract.localSymbol}")
+                    return cached_contract
+                else:
+                    logger.info(f"Cached contract for {symbol} expired, refreshing...")
+                    del self._contract_cache[cache_key]
+
             # For MNQ/MES, exchange should be CME/GLOBEX
             fut_exchange = 'CME' if exchange in ['CME', 'GLOBEX', 'SMART'] else exchange
             # Create contract with proper parameters
@@ -140,6 +156,10 @@ class IBKRClient:
                 valid.sort(key=lambda c: c.lastTradeDateOrContractMonth)
                 front_month = valid[0]
                 logger.info(f"Resolved {symbol} to front month: {front_month.localSymbol} (expires {front_month.lastTradeDateOrContractMonth})")
+
+                # Cache the resolved contract
+                self._contract_cache[cache_key] = (front_month, front_month.lastTradeDateOrContractMonth)
+
                 return front_month
             except Exception as e:
                 logger.error(f"Future resolution failed for {symbol}: {e}")
@@ -157,7 +177,10 @@ class IBKRClient:
 
     async def execute_trade(self, data):
         """Executes a trade based on webhook data."""
+        logger.info(f"IBKR TRADE REQUEST: {json.dumps(data, default=str)}")
+
         if not self.ib.isConnected():
+            logger.warning("IBKR not connected, attempting reconnect...")
             if not await self.connect():
                 return {"status": "error", "message": "IBKR Disconnected"}
 
@@ -217,14 +240,21 @@ class IBKRClient:
         else:
             orders.append(parent)
 
+        logger.info(f"IBKR CONTRACT: {contract.localSymbol or contract.symbol}, secType={contract.secType}, qty={qty}")
         logger.info(f"Placing {len(orders)} orders for {symbol}...")
-        
+
         trade = None
         for o in orders:
             trade = self.ib.placeOrder(contract, o)
-            
+
         await asyncio.sleep(0.5)
-        return {"status": "success", "order_id": trade.order.orderId if trade else 0}
+
+        # Log order result
+        order_id = trade.order.orderId if trade else 0
+        order_status = trade.orderStatus.status if trade and trade.orderStatus else 'Unknown'
+        logger.info(f"IBKR RESULT: order_id={order_id}, status={order_status}")
+
+        return {"status": "success", "order_id": order_id, "order_status": order_status}
 
     async def close_position(self, symbol):
         """Closes positions for a symbol."""

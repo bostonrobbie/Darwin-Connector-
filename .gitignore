@@ -7,3 +7,8 @@ test_trades.db
 nul
 MES
 Opening
+
+# Environment variables (NEVER commit credentials!)
+.env
+.env.local
+.env.*.local

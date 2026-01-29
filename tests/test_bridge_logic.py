@@ -70,13 +70,19 @@ class TestMT5BridgeRobustness(unittest.TestCase):
 
     @patch('src.mt5.bridge.mt5')
     def test_execute_trade_forces_limit_and_sl_tp(self, mock_mt5):
-        # Mock Ticks
+        # Mock Ticks - must have both bid and ask for spread calculation
         mock_tick = MagicMock()
         mock_tick.ask = 100.0
+        mock_tick.bid = 99.5
         mock_mt5.symbol_info_tick.return_value = mock_tick
         
         mock_info = MagicMock()
         mock_info.point = 0.5
+        mock_info.digits = 2
+        mock_info.trade_tick_size = 0.25
+        mock_info.volume_min = 0.01
+        mock_info.volume_max = 100.0
+        mock_info.volume_step = 0.01
         mock_mt5.symbol_info.return_value = mock_info
         
         mock_res = MagicMock()
@@ -95,9 +101,9 @@ class TestMT5BridgeRobustness(unittest.TestCase):
         req = args[0]
         self.assertEqual(req['type'], mock_mt5.ORDER_TYPE_BUY_LIMIT)
         
-        # Verify Price Calculation (Ask + 2 ticks)
-        # 100 + (2 * 0.5) = 101.0
-        self.assertEqual(req['price'], 101.0)
+        # Verify Price Calculation (Ask + 2 * tick_size)
+        # 100 + (2 * 0.25) = 100.5
+        self.assertEqual(req['price'], 100.5)
         
         # Verify SL/TP Calculation (No Defaults requested)
         self.assertEqual(req['sl'], 0.0)

@@ -5,11 +5,16 @@ import sys
 import logging
 import datetime
 import time
+import atexit
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import concurrent.futures
 from waitress import serve
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add parent dir to path to find client
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -26,7 +31,27 @@ def load_config():
     # Load from parent dir
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config.json')
     with open(path, 'r') as f:
-        return json.load(f)
+        config = json.load(f)
+
+    # Override with environment variables if set (security: keep secrets out of config.json)
+    if os.environ.get('MT5_LOGIN'):
+        config['mt5']['login'] = int(os.environ.get('MT5_LOGIN'))
+    if os.environ.get('MT5_PASSWORD'):
+        config['mt5']['password'] = os.environ.get('MT5_PASSWORD')
+    if os.environ.get('MT5_SERVER'):
+        config['mt5']['server'] = os.environ.get('MT5_SERVER')
+    if os.environ.get('TOPSTEP_USERNAME'):
+        config['topstep']['username'] = os.environ.get('TOPSTEP_USERNAME')
+    if os.environ.get('TOPSTEP_API_KEY'):
+        config['topstep']['api_key'] = os.environ.get('TOPSTEP_API_KEY')
+    if os.environ.get('TOPSTEP_ACCOUNT_ID'):
+        config['topstep']['account_id'] = int(os.environ.get('TOPSTEP_ACCOUNT_ID'))
+    if os.environ.get('WEBHOOK_SECRET'):
+        config['security']['webhook_secret'] = os.environ.get('WEBHOOK_SECRET')
+    if os.environ.get('DISCORD_WEBHOOK_URL'):
+        config['alerts']['discord_webhook'] = os.environ.get('DISCORD_WEBHOOK_URL')
+
+    return config
 
 CONFIG = load_config()
 MT5_CONF = CONFIG['mt5']
@@ -40,6 +65,11 @@ webhook_validator = WebhookValidator(CONFIG)
 
 # Global Executor for Parallel Tasks
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+
+# Ensure executor is cleaned up on exit
+def _shutdown_executor():
+    executor.shutdown(wait=False)
+atexit.register(_shutdown_executor)
 
 # Config file path for live updates
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config.json')
@@ -67,7 +97,6 @@ logger.info(f"TopStep Eval Mode: {'ENABLED (1 Mini)' if eval_mode_status else 'D
 
 # Global State
 STATE = {
-    "connected": False,
     "connected": False,
     "last_trade": "None"
 }
@@ -121,28 +150,34 @@ def validate_terminal_state():
     return True
 
 def safe_order_send(request, max_retries=3):
-    """Wraps order_send with retry logic for transient errors."""
+    """Wraps order_send with retry logic for transient errors.
+
+    Optimized delays for low-latency execution:
+    - 0.1s, 0.3s, 0.5s for transient errors (reduced from 0.5s, 1.0s, 1.0s)
+    """
+    delays = [0.1, 0.3, 0.5]  # Progressive backoff, optimized for speed
+
     for i in range(max_retries):
         try:
             res = mt5.order_send(request)
             if res is None:
                 logger.error(f"Order Send returned None (Attempt {i+1})")
-                time.sleep(0.5)
+                time.sleep(delays[i] if i < len(delays) else 0.5)
                 continue
-                
+
             if res.retcode == mt5.TRADE_RETCODE_DONE:
                 return res
             elif res.retcode in [mt5.TRADE_RETCODE_TIMEOUT, mt5.TRADE_RETCODE_CONNECTION]:
-                logger.warning(f"Transient Error {res.retcode}: {res.comment}. Retrying...")
-                time.sleep(1.0)
+                logger.warning(f"Transient Error {res.retcode}: {res.comment}. Retrying in {delays[i]}s...")
+                time.sleep(delays[i] if i < len(delays) else 0.5)
             else:
                 # Fatal error (e.g. Invalid Volume)
                 logger.error(f"Fatal Order Error {res.retcode}: {res.comment}")
                 return res
         except Exception as e:
             logger.error(f"Exception during order send: {e}")
-            time.sleep(0.5)
-            
+            time.sleep(delays[i] if i < len(delays) else 0.5)
+
     return None
 
 def close_positions(symbol, raw_symbol=None):
@@ -367,10 +402,14 @@ def execute_trade(data):
         return {"error": "MT5 Terminal Disconnected"}
 
     logger.info(f"Opening New Position: {action} {vol} {symbol}")
-    
+
     # 5. Order Type & Price Logic
     tick = mt5.symbol_info_tick(symbol)
     if not tick: return {"error": f"No Price for {symbol}"}
+
+    # Log tick data for slippage analysis
+    tick_spread = tick.ask - tick.bid
+    logger.info(f"TICK DATA: bid={tick.bid}, ask={tick.ask}, spread={tick_spread:.4f}")
 
     # Get Configs
     exec_conf = MT5_CONF.get('execution', {})
@@ -436,6 +475,11 @@ def execute_trade(data):
 
     logger.info(f"Order Params: Price={ex_price:.5f}, SL={sl_price:.5f}, TP={tp_price:.5f}")
 
+    # Log tick data for slippage analysis
+    if tick:
+        spread = tick.ask - tick.bid if tick.ask and tick.bid else 0
+        logger.info(f"TICK DATA: bid={tick.bid:.5f}, ask={tick.ask:.5f}, spread={spread:.5f}")
+
     req = {
         "action": action_type,
         "symbol": symbol,
@@ -449,7 +493,10 @@ def execute_trade(data):
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": filling_mode,
     }
-    
+
+    # Log full order request for debugging
+    logger.info(f"ORDER REQUEST: {json.dumps(req, default=str)}")
+
     # ... (Order Sending with Retry)
     try:
         res = safe_order_send(req)
@@ -476,11 +523,14 @@ def execute_trade(data):
         slippage = abs(actual_price - ex_price)
 
     return {
-        "success": True, 
-        "order": res.order, 
-        "expected_price": ex_price, 
-        "executed_price": actual_price, 
-        "slippage": slippage
+        "success": True,
+        "order": res.order,
+        "expected_price": ex_price,
+        "executed_price": actual_price,
+        "slippage": slippage,
+        "bid_price": tick.bid,
+        "ask_price": tick.ask,
+        "spread": tick.ask - tick.bid
     }
 
 # Flask
@@ -522,6 +572,206 @@ def forward_to_ibkr(data):
     except Exception as e:
         logger.error(f"Forwarding Error: {e}")
 
+def forward_to_ibkr_blocking(data):
+    """Forwards to IBKR and WAITS for response (not fire-and-forget)."""
+    start_time = time.time()
+    try:
+        ibkr_port = CONFIG['server'].get('ibkr_port', 5001)
+        url = f"http://127.0.0.1:{ibkr_port}/webhook"
+
+        payload = data.copy()
+        payload['secret'] = CONFIG['security']['webhook_secret']
+
+        # Symbol cleanup for IBKR
+        raw = payload.get('symbol', '').upper()
+        if '1!' in raw:
+            payload['symbol'] = raw.replace('1!', '').replace('2!', '')
+            payload['secType'] = 'FUT'
+            payload['exchange'] = 'GLOBEX'
+
+        response = requests.post(url, json=payload, timeout=10.0)
+        duration = (time.time() - start_time) * 1000
+
+        result = response.json() if response.status_code == 200 else {'error': response.text}
+        result['duration_ms'] = duration
+        result['status'] = 'success' if response.status_code == 200 else 'error'
+
+        logger.info(f"IBKR Response: {result}")
+        return result
+
+    except requests.exceptions.Timeout:
+        duration = (time.time() - start_time) * 1000
+        logger.error(f"IBKR Timeout after {duration:.0f}ms")
+        return {'status': 'timeout', 'error': 'IBKR bridge timeout', 'duration_ms': duration}
+    except Exception as e:
+        duration = (time.time() - start_time) * 1000
+        logger.error(f"IBKR Error: {e}")
+        return {'status': 'error', 'error': str(e), 'duration_ms': duration}
+
+def handle_topstep_logic_blocking(data):
+    """Wrapper for TopStep that returns a result dict."""
+    start_time = time.time()
+    try:
+        # Call the existing TopStep logic
+        handle_topstep_logic(data)
+        duration = (time.time() - start_time) * 1000
+        return {'status': 'success', 'duration_ms': duration}
+    except Exception as e:
+        duration = (time.time() - start_time) * 1000
+        logger.error(f"TopStep Error: {e}")
+        return {'status': 'error', 'error': str(e), 'duration_ms': duration}
+
+def capture_pre_trade_state():
+    """Capture position state before trade for comprehensive logging."""
+    state = {'positions': [], 'equity': 0.0, 'margin': 0.0, 'free_margin': 0.0}
+    try:
+        account = mt5.account_info()
+        if account:
+            state['equity'] = account.equity
+            state['margin'] = account.margin
+            state['free_margin'] = account.margin_free
+
+        positions = mt5.positions_get()
+        if positions:
+            state['positions'] = [{
+                'symbol': p.symbol,
+                'volume': p.volume,
+                'type': 'BUY' if p.type == 0 else 'SELL',
+                'profit': p.profit,
+                'ticket': p.ticket
+            } for p in positions]
+    except Exception as e:
+        logger.error(f"Pre-trade state capture error: {e}")
+    return state
+
+def execute_mt5_blocking(data, webhook_received_at, raw_webhook):
+    """Execute MT5 trade and return result dict."""
+    start_time = time.time()
+    try:
+        # Capture pre-trade state
+        pre_trade_state = capture_pre_trade_state()
+        logger.info(f"PRE-TRADE STATE: equity={pre_trade_state['equity']:.2f}, positions={len(pre_trade_state['positions'])}")
+        if pre_trade_state['positions']:
+            logger.info(f"  Existing positions: {json.dumps(pre_trade_state['positions'], default=str)}")
+
+        # Get equity before trade
+        equity_before = pre_trade_state['equity']
+
+        res = execute_trade(data)
+        duration = (time.time() - start_time) * 1000
+
+        STATE["last_trade"] = f"{data.get('action')} {data.get('symbol')}"
+        status = 'success' if 'order' in res or res.get('status') == 'success' else 'error-mt5'
+
+        # Get equity after trade
+        equity_after = 0.0
+        try:
+            account_info = mt5.account_info()
+            if account_info:
+                equity_after = account_info.equity
+        except:
+            pass
+
+        # Get current positions after trade
+        position_after = ""
+        try:
+            positions = mt5.positions_get()
+            if positions:
+                position_after = json.dumps([{
+                    "symbol": p.symbol,
+                    "type": "BUY" if p.type == 0 else "SELL",
+                    "volume": p.volume,
+                    "profit": p.profit
+                } for p in positions])
+        except:
+            pass
+
+        # Database Log with comprehensive tick data
+        db.log_trade(
+            "MT5",
+            data,
+            status,
+            duration,
+            details=str(res),
+            expected_price=res.get('expected_price', 0.0),
+            executed_price=res.get('executed_price', 0.0),
+            slippage=res.get('slippage', 0.0),
+            order_id=str(res.get('order', '')),
+            ticket=str(res.get('order', '')),
+            webhook_received_at=webhook_received_at,
+            raw_webhook=raw_webhook,
+            fill_time_ms=duration,
+            broker_response=json.dumps(res) if isinstance(res, dict) else str(res),
+            position_after=position_after,
+            equity_before=equity_before,
+            equity_after=equity_after,
+            pre_trade_positions=json.dumps(pre_trade_state['positions']) if pre_trade_state['positions'] else None,
+            bid_price=res.get('bid_price', 0.0),
+            ask_price=res.get('ask_price', 0.0),
+            spread=res.get('spread', 0.0)
+        )
+
+        # Alert on success
+        if status == 'success':
+            alerts.send_trade_alert(data, platform="MT5")
+
+        res['status'] = status
+        res['duration_ms'] = duration
+        return res
+
+    except Exception as e:
+        duration = (time.time() - start_time) * 1000
+        logger.error(f"MT5 Error: {e}")
+        alerts.send_error_alert(str(e), context="MT5_Bridge_Main")
+        db.log_trade(
+            "MT5",
+            data,
+            "error",
+            0,
+            details=str(e),
+            webhook_received_at=webhook_received_at,
+            raw_webhook=raw_webhook,
+            rejected_reason=str(e)
+        )
+        return {'status': 'error', 'error': str(e), 'duration_ms': duration}
+
+def execute_all_brokers_parallel(data, config, webhook_received_at, raw_webhook):
+    """Execute trades on all 3 brokers in TRUE parallel."""
+    results = {'mt5': None, 'ibkr': None, 'topstep': None}
+    futures = {}
+
+    # Submit all broker executions to thread pool SIMULTANEOUSLY
+    if not is_broker_paused(config, 'mt5'):
+        futures['mt5'] = executor.submit(execute_mt5_blocking, data, webhook_received_at, raw_webhook)
+    else:
+        results['mt5'] = {'status': 'paused', 'reason': 'Broker paused by user'}
+        logger.info("MT5 is PAUSED - Skipping trade")
+
+    if not is_broker_paused(config, 'ibkr'):
+        futures['ibkr'] = executor.submit(forward_to_ibkr_blocking, data)
+    else:
+        results['ibkr'] = {'status': 'paused', 'reason': 'Broker paused by user'}
+        logger.info("IBKR is PAUSED - Skipping trade forwarding")
+
+    if not is_broker_paused(config, 'topstep'):
+        futures['topstep'] = executor.submit(handle_topstep_logic_blocking, data)
+    else:
+        results['topstep'] = {'status': 'paused', 'reason': 'Broker paused by user'}
+        logger.info("TopStep is PAUSED - Skipping trade")
+
+    # Wait for all with timeout (10s per broker)
+    for broker, future in futures.items():
+        try:
+            results[broker] = future.result(timeout=10.0)
+        except concurrent.futures.TimeoutError:
+            results[broker] = {'status': 'timeout', 'error': f'{broker} execution timed out'}
+            logger.error(f"{broker} execution timed out")
+        except Exception as e:
+            results[broker] = {'status': 'error', 'error': str(e)}
+            logger.error(f"{broker} execution error: {e}")
+
+    return results
+
 @app.route('/health', methods=['GET'])
 def health():
     connected = mt5.terminal_info() is not None
@@ -541,6 +791,175 @@ def health():
         "mt5_paused": broker_controls.get('mt5_paused', False),
         "ibkr_paused": broker_controls.get('ibkr_paused', False),
         "topstep_paused": broker_controls.get('topstep_paused', False)
+    })
+
+@app.route('/ping', methods=['GET', 'POST'])
+def ping():
+    """Simple ping endpoint to verify server is reachable."""
+    return jsonify({
+        "status": "ok",
+        "message": "Webhook server is running",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "server": "MT5_Bridge"
+    })
+
+# Store verification tokens for round-trip testing
+_verification_tokens = {}
+
+@app.route('/webhook/verify', methods=['POST'])
+def webhook_verify():
+    """
+    Verification endpoint for round-trip webhook testing.
+    Receives a verification token and stores it to confirm the webhook URL is reachable.
+    """
+    data = request.json or {}
+    token = data.get('verification_token')
+
+    if not token:
+        return jsonify({"error": "Missing verification_token"}), 400
+
+    # Store the token with timestamp
+    _verification_tokens[token] = {
+        "received_at": datetime.datetime.now().isoformat(),
+        "remote_addr": request.remote_addr
+    }
+
+    logger.info(f"Webhook verification received: token={token[:8]}... from {request.remote_addr}")
+
+    return jsonify({
+        "status": "verified",
+        "token": token,
+        "received_at": _verification_tokens[token]["received_at"],
+        "server": "MT5_Bridge"
+    })
+
+@app.route('/webhook/verify/<token>', methods=['GET'])
+def check_verification(token):
+    """
+    Check if a verification token was received.
+    Used by the verification function to confirm round-trip success.
+    """
+    if token in _verification_tokens:
+        result = _verification_tokens.pop(token)  # Remove after checking
+        return jsonify({
+            "status": "success",
+            "verified": True,
+            "received_at": result["received_at"],
+            "remote_addr": result["remote_addr"]
+        })
+    else:
+        return jsonify({
+            "status": "pending",
+            "verified": False,
+            "message": "Token not yet received"
+        })
+
+@app.route('/webhook/test', methods=['GET', 'POST'])
+def webhook_test():
+    """
+    Debug endpoint to test webhook receipt.
+    Accepts ANY request and logs all details for troubleshooting.
+    Use this to verify TradingView can reach your server.
+    """
+    received_at = datetime.datetime.now().isoformat()
+
+    # Capture everything about the request
+    debug_info = {
+        "status": "received",
+        "received_at": received_at,
+        "method": request.method,
+        "path": request.path,
+        "remote_addr": request.remote_addr,
+        "headers": dict(request.headers),
+        "args": dict(request.args),
+        "content_type": request.content_type,
+    }
+
+    # Try to get body data
+    try:
+        if request.is_json:
+            debug_info["json_body"] = request.json
+        else:
+            debug_info["raw_body"] = request.get_data(as_text=True)
+    except Exception as e:
+        debug_info["body_error"] = str(e)
+
+    # Log it
+    logger.info(f"WEBHOOK TEST RECEIVED: {json.dumps(debug_info, indent=2, default=str)}")
+
+    # Check if it looks like a valid TradingView webhook
+    validation = {
+        "has_secret": False,
+        "secret_valid": False,
+        "has_action": False,
+        "has_symbol": False,
+        "ready_for_live": False
+    }
+
+    if request.is_json and request.json:
+        data = request.json
+        validation["has_secret"] = "secret" in data
+        validation["secret_valid"] = data.get("secret") == CONFIG['security']['webhook_secret']
+        validation["has_action"] = "action" in data
+        validation["has_symbol"] = "symbol" in data
+        validation["ready_for_live"] = all([
+            validation["secret_valid"],
+            validation["has_action"],
+            validation["has_symbol"]
+        ])
+
+    debug_info["validation"] = validation
+
+    if validation["ready_for_live"]:
+        debug_info["message"] = "SUCCESS! Your webhook is correctly formatted. Change /webhook/test to /webhook for live trading."
+    elif validation["has_secret"] and not validation["secret_valid"]:
+        debug_info["message"] = "ERROR: Secret does not match. Check your webhook_secret in config.json"
+    else:
+        debug_info["message"] = "Webhook received but missing required fields. Need: secret, action, symbol"
+
+    return jsonify(debug_info)
+
+@app.route('/webhook/info', methods=['GET'])
+def webhook_info():
+    """Returns the expected webhook format and current configuration."""
+    mt5_subdomain = CONFIG.get('tunnels', {}).get('mt5_subdomain', 'major-cups-pick')
+
+    return jsonify({
+        "webhook_url": f"https://{mt5_subdomain}.loca.lt/webhook",
+        "test_url": f"https://{mt5_subdomain}.loca.lt/webhook/test",
+        "health_url": f"https://{mt5_subdomain}.loca.lt/health",
+        "expected_format": {
+            "secret": CONFIG['security']['webhook_secret'],
+            "action": "BUY | SELL | CLOSE | EXIT | FLATTEN",
+            "symbol": "NQ1! | MNQ1! | ES1! | MES1!",
+            "volume": 1.0,
+            "time": "{{timenow}}"
+        },
+        "tradingview_alert_template": {
+            "secret": CONFIG['security']['webhook_secret'],
+            "action": "{{strategy.order.action}}",
+            "symbol": "{{ticker}}",
+            "volume": "{{strategy.order.contracts}}",
+            "time": "{{timenow}}"
+        },
+        "manual_buy_example": {
+            "secret": CONFIG['security']['webhook_secret'],
+            "action": "BUY",
+            "symbol": "NQ1!",
+            "volume": 1
+        },
+        "manual_sell_example": {
+            "secret": CONFIG['security']['webhook_secret'],
+            "action": "SELL",
+            "symbol": "NQ1!",
+            "volume": 1
+        },
+        "close_example": {
+            "secret": CONFIG['security']['webhook_secret'],
+            "action": "CLOSE",
+            "symbol": "NQ1!",
+            "volume": 1
+        }
     })
 
 @app.route('/pause/<broker>', methods=['POST'])
@@ -667,114 +1086,23 @@ def webhook():
         )
         return jsonify({"error": "Rejected", "reason": rejection_reason}), 400
 
-    # 1. Forward to IBKR (Parallel - Fire & Forget) - Check if paused
-    if not is_broker_paused(current_config, 'ibkr'):
-        executor.submit(forward_to_ibkr, data)
-    else:
-        logger.info("IBKR is PAUSED - Skipping trade forwarding")
+    # === TRUE PARALLEL EXECUTION ===
+    # All 3 brokers execute simultaneously in thread pool
+    start_time = time.time()
+    results = execute_all_brokers_parallel(data, current_config, webhook_received_at, raw_webhook)
+    total_duration = (time.time() - start_time) * 1000
 
-    # 2. Forward to TopStepX (Parallel) - Check if paused
-    if not is_broker_paused(current_config, 'topstep'):
-        executor.submit(handle_topstep_logic, data)
-    else:
-        logger.info("TopStep is PAUSED - Skipping trade")
+    # Log execution summary
+    success_count = sum(1 for r in results.values() if r and r.get('status') == 'success')
+    logger.info(f"Parallel Execution Complete: {success_count}/3 succeeded in {total_duration:.0f}ms")
+    logger.info(f"Results: MT5={results.get('mt5', {}).get('status')}, IBKR={results.get('ibkr', {}).get('status')}, TopStep={results.get('topstep', {}).get('status')}")
 
-    # 3. Execute MT5 (Main Thread - Critical Path) - Check if paused
-    if is_broker_paused(current_config, 'mt5'):
-        logger.info("MT5 is PAUSED - Skipping trade")
-        db.log_trade(
-            "MT5",
-            data,
-            "paused",
-            0,
-            details="Broker paused by user",
-            webhook_received_at=webhook_received_at,
-            raw_webhook=raw_webhook,
-            rejected_reason="Broker paused"
-        )
-        return jsonify({"status": "paused", "message": "MT5 broker is paused"})
-
-    try:
-        # Get equity before trade
-        equity_before = 0.0
-        try:
-            account_info = mt5.account_info()
-            if account_info:
-                equity_before = account_info.equity
-        except:
-            pass
-
-        start_time = time.time()
-        res = execute_trade(data)
-        duration = (time.time() - start_time) * 1000
-
-        STATE["last_trade"] = f"{data.get('action')} {data.get('symbol')}"
-
-        status = 'success' if 'order' in res or res.get('status') == 'success' else 'error-mt5'
-
-        # Get equity after trade
-        equity_after = 0.0
-        try:
-            account_info = mt5.account_info()
-            if account_info:
-                equity_after = account_info.equity
-        except:
-            pass
-
-        # Get current positions after trade
-        position_after = ""
-        try:
-            positions = mt5.positions_get()
-            if positions:
-                position_after = json.dumps([{
-                    "symbol": p.symbol,
-                    "type": "BUY" if p.type == 0 else "SELL",
-                    "volume": p.volume,
-                    "profit": p.profit
-                } for p in positions])
-        except:
-            pass
-
-        # Database Log (Enhanced with full trade verification data)
-        db.log_trade(
-            "MT5",
-            data,
-            status,
-            duration,
-            details=str(res),
-            expected_price=res.get('expected_price', 0.0),
-            executed_price=res.get('executed_price', 0.0),
-            slippage=res.get('slippage', 0.0),
-            order_id=str(res.get('order', '')),
-            ticket=str(res.get('order', '')),
-            webhook_received_at=webhook_received_at,
-            raw_webhook=raw_webhook,
-            fill_time_ms=duration,
-            broker_response=json.dumps(res) if isinstance(res, dict) else str(res),
-            position_after=position_after,
-            equity_before=equity_before,
-            equity_after=equity_after
-        )
-
-        # Alert (Only on success to avoid spamming errors if simple check fail)
-        if status == 'success':
-            alerts.send_trade_alert(data, platform="MT5")
-
-        return jsonify(res)
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        alerts.send_error_alert(str(e), context="MT5_Bridge_Main")
-        db.log_trade(
-            "MT5",
-            data,
-            "error",
-            0,
-            details=str(e),
-            webhook_received_at=webhook_received_at,
-            raw_webhook=raw_webhook,
-            rejected_reason=str(e)
-        )
-        return jsonify({"error": str(e)}), 500
+    # Return aggregated response
+    return jsonify({
+        "status": "completed",
+        "total_duration_ms": round(total_duration, 2),
+        "results": results
+    })
 
 def handle_topstep_logic(data):
     """

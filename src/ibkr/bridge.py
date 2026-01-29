@@ -9,6 +9,10 @@ import threading
 import time
 import datetime
 from concurrent.futures import Future
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # FIX: multiple event loops issue with ib_async/eventkit
 # This must run before imports that might check for a loop
@@ -29,7 +33,19 @@ logger = logging.getLogger("IBKR_Bridge")
 
 def load_config():
     with open('config.json', 'r') as f:
-        return json.load(f)
+        config = json.load(f)
+
+    # Override with environment variables if set
+    if os.environ.get('IBKR_API_KEY'):
+        config['ibkr']['api_key'] = os.environ.get('IBKR_API_KEY')
+    if os.environ.get('IBKR_USERNAME'):
+        config['ibkr']['username'] = os.environ.get('IBKR_USERNAME')
+    if os.environ.get('IBKR_PASSWORD'):
+        config['ibkr']['password'] = os.environ.get('IBKR_PASSWORD')
+    if os.environ.get('WEBHOOK_SECRET'):
+        config['security']['webhook_secret'] = os.environ.get('WEBHOOK_SECRET')
+
+    return config
 
 config = load_config()
 app = Flask(__name__)
@@ -102,6 +118,67 @@ def health():
     connected = client.is_connected()
     STATE["connected"] = connected
     return jsonify({"status": "connected" if connected else "disconnected", "last_trade": STATE["last_trade"]})
+
+@app.route('/ping', methods=['GET', 'POST'])
+def ping():
+    """Simple ping endpoint to verify server is reachable."""
+    return jsonify({
+        "status": "ok",
+        "message": "Webhook server is running",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "server": "IBKR_Bridge"
+    })
+
+# Store verification tokens for round-trip testing
+_verification_tokens = {}
+
+@app.route('/webhook/verify', methods=['POST'])
+def webhook_verify():
+    """
+    Verification endpoint for round-trip webhook testing.
+    Receives a verification token and stores it to confirm the webhook URL is reachable.
+    """
+    data = request.json or {}
+    token = data.get('verification_token')
+
+    if not token:
+        return jsonify({"error": "Missing verification_token"}), 400
+
+    # Store the token with timestamp
+    _verification_tokens[token] = {
+        "received_at": datetime.datetime.now().isoformat(),
+        "remote_addr": request.remote_addr
+    }
+
+    logger.info(f"Webhook verification received: token={token[:8]}... from {request.remote_addr}")
+
+    return jsonify({
+        "status": "verified",
+        "token": token,
+        "received_at": _verification_tokens[token]["received_at"],
+        "server": "IBKR_Bridge"
+    })
+
+@app.route('/webhook/verify/<token>', methods=['GET'])
+def check_verification(token):
+    """
+    Check if a verification token was received.
+    Used by the verification function to confirm round-trip success.
+    """
+    if token in _verification_tokens:
+        result = _verification_tokens.pop(token)  # Remove after checking
+        return jsonify({
+            "status": "success",
+            "verified": True,
+            "received_at": result["received_at"],
+            "remote_addr": result["remote_addr"]
+        })
+    else:
+        return jsonify({
+            "status": "pending",
+            "verified": False,
+            "message": "Token not yet received"
+        })
 
 @app.route('/webhook', methods=['POST'])
 def webhook():

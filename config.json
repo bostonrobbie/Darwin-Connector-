@@ -5,7 +5,7 @@
         "mt5_port": 80
     },
     "security": {
-        "webhook_secret": "fd70ac19-6154-4354-a8ba-b345b511ed93",
+        "webhook_secret": "",
         "max_webhook_age_seconds": 30
     },
     "trading_hours": {
@@ -66,10 +66,10 @@
         "mock_mode": false,
         "eval_mode": true,
         "live_test_mode": true,
-        "username": "rgorham369@gmail.com",
-        "api_key": "9lqnj/C6Uv7trbAT01n0QpU1Q1TSYgCcKp7n/WUw2Cc=",
+        "username": "",
+        "api_key": "",
         "base_url": "https://api.topstepx.com/api",
-        "account_id": 17247316,
+        "account_id": 0,
         "max_retries": 3,
         "micros_per_mini": 5,
         "max_micros": 15,
@@ -81,9 +81,9 @@
         }
     },
     "mt5": {
-        "login": 4000082688,
-        "password": "@JILLson9",
-        "server": "Darwinex-Live",
+        "login": 0,
+        "password": "",
+        "server": "",
         "path": "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
         "magic_number": 999888,
         "auto_connect": true,

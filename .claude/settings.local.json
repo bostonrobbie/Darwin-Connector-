@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sqlite3:*)",
+      "Bash(python:*)",
+      "Bash(dir \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\logs\" /O-D)",
+      "Bash(powershell:*)",
+      "Bash(cmd //c create_shortcut.bat)",
+      "Bash(dir \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\tests\")",
+      "mcp__Windows-MCP__Powershell-Tool",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\User\\\\Documents\" -Recurse -Directory -ErrorAction SilentlyContinue)",
+      "Bash(Where-Object {$_Name -match \"\\(bridge|trading|ibkr|mt5|tradingview|webhook|connector\\)\" -or $_FullName -match \"\\(bridge|trading|ibkr|mt5|tradingview|webhook|connector\\)\"})",
+      "Bash(Select-Object FullName)",
+      "mcp__filesystem__directory_tree",
+      "mcp__filesystem__list_allowed_directories",
+      "Bash(wc:*)",
+      "mcp__filesystem__search_files",
+      "Bash(findstr:*)",
+      "mcp__filesystem__list_directory",
+      "mcp__filesystem__get_file_info",
+      "mcp__filesystem__read_text_file",
+      "Bash(dir:*)",
+      "Bash(Remove-Item -Force \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\src\\\\ib_executor.py\", \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\src\\\\main_ibkr.py\", \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\src\\\\webhook_listener.py\" -ErrorAction SilentlyContinue)",
+      "Bash(Write-Host \"Deleted src legacy files\")",
+      "Bash(Remove-Item -Force \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\test_topstep.py\", \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\test_both_brokers.py\", \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\probe_topstep.py\", \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\create_desktop_shortcut.py\", \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\create_shortcut.py\", \"C:\\\\Users\\\\User\\\\Documents\\\\AI\\\\Unified_Bridge\\\\dashboard.py\" -ErrorAction SilentlyContinue)",
+      "Bash(Write-Host \"Deleted root legacy files\")",
+      "Bash(pip install:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

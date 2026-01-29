@@ -50,7 +50,12 @@ class DatabaseManager:
                     "equity_after": "REAL",
                     "commission": "REAL",
                     "pnl": "REAL",
-                    "rejected_reason": "TEXT"
+                    "rejected_reason": "TEXT",
+                    # New columns for enhanced logging
+                    "pre_trade_positions": "TEXT",  # JSON of positions before trade
+                    "bid_price": "REAL",            # Tick bid at trade time
+                    "ask_price": "REAL",            # Tick ask at trade time
+                    "spread": "REAL",               # Spread at trade time
                 }
                 for col, dtype in new_cols.items():
                     if col not in existing_cols:
@@ -68,7 +73,8 @@ class DatabaseManager:
                   executed_price=0.0, slippage=0.0, order_id=None, ticket=None,
                   webhook_received_at=None, raw_webhook=None, fill_time_ms=0.0,
                   broker_response=None, position_after=None, equity_before=0.0,
-                  equity_after=0.0, commission=0.0, pnl=0.0, rejected_reason=None):
+                  equity_after=0.0, commission=0.0, pnl=0.0, rejected_reason=None,
+                  pre_trade_positions=None, bid_price=0.0, ask_price=0.0, spread=0.0):
         """Logs a trade execution with comprehensive metrics for verification."""
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -78,9 +84,10 @@ class DatabaseManager:
                         timestamp, platform, symbol, action, volume, status, latency_ms,
                         details, expected_price, executed_price, slippage, order_id, ticket,
                         webhook_received_at, raw_webhook, fill_time_ms, broker_response,
-                        position_after, equity_before, equity_after, commission, pnl, rejected_reason
+                        position_after, equity_before, equity_after, commission, pnl, rejected_reason,
+                        pre_trade_positions, bid_price, ask_price, spread
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     datetime.now().isoformat(),
                     platform,
@@ -104,7 +111,11 @@ class DatabaseManager:
                     equity_after,
                     commission,
                     pnl,
-                    rejected_reason
+                    rejected_reason,
+                    pre_trade_positions,
+                    bid_price,
+                    ask_price,
+                    spread
                 ))
                 conn.commit()
                 return cursor.lastrowid

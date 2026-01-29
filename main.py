@@ -3,9 +3,11 @@ import os
 import json
 import time
 import logging
-import logging
 import socket
+import atexit
 import webbrowser
+import uuid
+import requests
 from colorama import init, Fore, Style
 from src.manager import ProcessManager
 from src.qa_suite import run_qa
@@ -27,6 +29,36 @@ def acquire_lock():
         print(f"{Fore.RED}Please close the other window before starting a new one.{Style.RESET_ALL}")
         sys.exit(1)
 
+def release_lock():
+    """Release the singleton lock socket."""
+    global lock_socket
+    if lock_socket:
+        try:
+            lock_socket.close()
+        except:
+            pass
+
+atexit.register(release_lock)
+
+def kill_port_owner(port=64000):
+    """Kill whatever process is holding the lock port."""
+    import subprocess
+    current_pid = os.getpid()
+
+    try:
+        # Use PowerShell to find the process owning the UDP port
+        cmd = f'powershell -Command "Get-NetUDPEndpoint -LocalPort {port} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess"'
+        result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+
+        if result.stdout.strip():
+            pid = int(result.stdout.strip())
+            if pid != current_pid and pid > 0:
+                print(f"Killing process {pid} holding port {port}...")
+                subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
+                time.sleep(1)  # Wait for port to be released
+    except Exception as e:
+        print(f"Warning: Could not check port owner: {e}")
+
 # Ensure logs dir exists
 if not os.path.exists('logs'):
     os.makedirs('logs')
@@ -38,7 +70,82 @@ def load_config():
     with open('config.json', 'r') as f:
         return json.load(f)
 
+def verify_tunnel_forwarding(subdomain, timeout=45):
+    """Verify tunnel is actually forwarding requests to the local server."""
+    url = f"https://{subdomain}.loca.lt/health"
+    start = time.time()
+    print(f"    Verifying tunnel: {subdomain}.loca.lt ...")
+
+    while time.time() - start < timeout:
+        try:
+            r = requests.get(url, timeout=10, headers={'bypass-tunnel-reminder': 'true'})
+            if r.status_code == 200:
+                print(f"{Fore.GREEN}    [OK] Tunnel {subdomain} verified!{Style.RESET_ALL}")
+                return True
+        except requests.exceptions.RequestException:
+            pass
+        time.sleep(5)
+
+    print(f"{Fore.RED}    [!] Tunnel {subdomain} NOT responding after {timeout}s!{Style.RESET_ALL}")
+    return False
+
+def verify_webhook_url(subdomain, local_port, bridge_name="Bridge", timeout=15):
+    """
+    Perform a complete round-trip webhook verification.
+
+    1. Generate a unique verification token
+    2. POST it to the public tunnel URL /webhook/verify
+    3. Check if the local server received it via /webhook/verify/<token>
+
+    This confirms that webhooks sent to the public URL will actually
+    be received by the local server.
+    """
+    token = str(uuid.uuid4())
+    public_url = f"https://{subdomain}.loca.lt/webhook/verify"
+    local_check_url = f"http://localhost:{local_port}/webhook/verify/{token}"
+
+    print(f"    Verifying webhook delivery: {subdomain}.loca.lt ...")
+
+    # Step 1: Send verification token through public tunnel
+    try:
+        r = requests.post(
+            public_url,
+            json={"verification_token": token},
+            headers={'bypass-tunnel-reminder': 'true', 'Content-Type': 'application/json'},
+            timeout=10
+        )
+
+        if r.status_code != 200:
+            print(f"{Fore.RED}    [!] {bridge_name}: Public URL rejected request (status={r.status_code}){Style.RESET_ALL}")
+            return False
+
+    except requests.exceptions.RequestException as e:
+        print(f"{Fore.RED}    [!] {bridge_name}: Failed to reach public URL: {e}{Style.RESET_ALL}")
+        return False
+
+    # Step 2: Wait briefly for token to propagate
+    time.sleep(1)
+
+    # Step 3: Check if local server received the token
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            check = requests.get(local_check_url, timeout=5)
+            if check.status_code == 200:
+                data = check.json()
+                if data.get('verified'):
+                    print(f"{Fore.GREEN}    [OK] {bridge_name}: Webhook URL verified! Round-trip successful.{Style.RESET_ALL}")
+                    return True
+        except requests.exceptions.RequestException:
+            pass
+        time.sleep(2)
+
+    print(f"{Fore.RED}    [!] {bridge_name}: Webhook verification FAILED - token not received!{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}        The public URL may not be forwarding to your local server.{Style.RESET_ALL}")
+    return False
+
 def main():
+    kill_port_owner(64000)
     acquire_lock()
     print(f"{Fore.CYAN}=========================================={Style.RESET_ALL}")
     print(f"{Fore.CYAN}       UNIFIED BRIDGE SUPERVISOR          {Style.RESET_ALL}")
@@ -134,7 +241,21 @@ def main():
     mgr.start_tunnel(mt5_port, mt5_sub, "MT5_Tunnel")
     mgr.start_backup_tunnel(mt5_port, "MT5_Backup", type="serveo")
 
-    # Dashboard
+    # Verify tunnels are actually forwarding (wait for bridges to start first)
+    print(f"\n{Fore.CYAN}[*] Verifying tunnel connectivity...{Style.RESET_ALL}")
+    time.sleep(5)  # Give bridges time to start
+    verify_tunnel_forwarding(mt5_sub, timeout=30)
+    verify_tunnel_forwarding(ibkr_sub, timeout=30)
+
+    # Verify webhooks can actually be received (round-trip test)
+    print(f"\n{Fore.CYAN}[*] Verifying webhook delivery (round-trip test)...{Style.RESET_ALL}")
+    mt5_webhook_ok = verify_webhook_url(mt5_sub, mt5_port, "MT5", timeout=15)
+    ibkr_webhook_ok = verify_webhook_url(ibkr_sub, ibkr_port, "IBKR", timeout=15)
+
+    if not mt5_webhook_ok or not ibkr_webhook_ok:
+        print(f"\n{Fore.YELLOW}[WARNING] Webhook verification failed for one or more bridges!{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}         TradingView alerts may not be received correctly.{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}         Check tunnel status and try restarting.{Style.RESET_ALL}")
 
     # Dashboard
     dash_log = open('logs/dashboard.log', 'a')
@@ -146,6 +267,7 @@ def main():
 
     # --- 3. MAIN LOOP ---
     last_app_check = time.time()
+    last_tunnel_check = time.time()
     first_run = True
     
     try:
@@ -223,6 +345,13 @@ def main():
                  print(f"{Fore.YELLOW}[!] TOPSTEP DISCONNECTED{Style.RESET_ALL}")
                  connection_states["TopStep"] = False
             
+            # --- PUBLIC TUNNEL HEALTH CHECK (Every 60s) ---
+            if time.time() - last_tunnel_check > 60:
+                # Check if public tunnel URLs are actually reachable
+                mgr.check_public_health("MT5_Tunnel", f"https://{mt5_sub}.loca.lt")
+                mgr.check_public_health("IBKR_Tunnel", f"https://{ibkr_sub}.loca.lt")
+                last_tunnel_check = time.time()
+
     # --- External App Keep-Alive (Check every 60s) ---
             if time.time() - last_app_check > 60:
                 # Check MT5

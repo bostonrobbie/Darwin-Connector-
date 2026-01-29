@@ -1,6 +1,7 @@
 flask
 flask-cors
 ib_insync
+ib_async
 MetaTrader5
 requests
 pandas
@@ -10,3 +11,4 @@ colorama
 psutil
 waitress
 pytz
+python-dotenv
