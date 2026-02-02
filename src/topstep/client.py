@@ -110,7 +110,7 @@ class TopStepClient:
 
             response = self.session.post(
                 f"{self.base_url}/Account/search",
-                json={"onlyActiveAccounts": True},
+                json={"onlyActiveAccounts": False},  # Include all accounts to find configured ID
                 headers=headers,
                 timeout=10
             )
@@ -121,9 +121,13 @@ class TopStepClient:
                 if accounts:
                     # If account_id is pre-configured, find that specific account
                     configured_id = self.account_id
+                    logger.info(f"DEBUG: Configured account_id from config: {configured_id} (type: {type(configured_id).__name__})")
+                    logger.info(f"DEBUG: All accounts from API: {[(a.get('id'), a.get('name'), a.get('canTrade')) for a in accounts]}")
                     if configured_id:
                         for acc in accounts:
-                            if acc.get('id') == configured_id:
+                            acc_id = acc.get('id')
+                            logger.info(f"DEBUG: Comparing {acc_id} (type: {type(acc_id).__name__}) == {configured_id}")
+                            if acc_id == configured_id:
                                 self.account_name = acc.get('name')
                                 balance = acc.get('balance', 0)
                                 logger.info(f"{Fore.GREEN}TopStepX: Using configured account {self.account_name} (ID: {self.account_id}, Balance: ${balance:,.2f}){Style.RESET_ALL}")
