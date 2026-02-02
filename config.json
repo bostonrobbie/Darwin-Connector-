@@ -12,7 +12,13 @@
         "hard_exit_enabled": true,
         "hard_exit_time": "16:50",
         "timezone": "America/New_York",
-        "trading_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "trading_days": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday"
+        ],
         "sunday_session_enabled": true,
         "sunday_session_start": "18:00"
     },
@@ -66,10 +72,10 @@
         "mock_mode": false,
         "eval_mode": true,
         "live_test_mode": true,
-        "username": "",
-        "api_key": "",
+        "username": "rgorham369@gmail.com",
+        "api_key": "9lqnj/C6Uv7trbAT01n0QpU1Q1TSYgCcKp7n/WUw2Cc=",
         "base_url": "https://api.topstepx.com/api",
-        "account_id": 0,
+        "account_id": 17182039,
         "max_retries": 3,
         "micros_per_mini": 5,
         "max_micros": 15,
